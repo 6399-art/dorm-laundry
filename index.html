@@ -10,7 +10,7 @@
   --bg:#FFD21F; --paper:#FBF9F4; --ink:#111111; --fg:#111111; --muted:#5a5466;
   --yellow:#FFD21F; --pink:#FF4F7B; --purple:#8567F7; --green:#3FC83A;
   --on-accent:#111111;
-  --free-bg:#C6F2BD; --run-bg:#D9CCFF; --soon-bg:#FFE48A; --done-bg:#FFC2D1; --fault-bg:#E4E1E8;
+  --free-bg:#C6F2BD; --run-bg:#D9CCFF; --soon-bg:#FFE48A; --done-bg:#FFC2D1; --fault-bg:#E4E1E8; --grace-bg:#B5E8D5; --held-bg:#BFE3FF;
   --free-t:#0b6b25; --soon-t:#8a4a00; --bad-t:#b3123a;
   --hatch:rgba(17,17,17,.14);
   --deco-a:#FF4F7B; --deco-b:#8567F7;
@@ -20,7 +20,7 @@
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#16121f; --paper:#221c2f; --ink:#f3eee4; --fg:#f3eee4; --muted:#b5adc6;
-    --free-bg:#1f4a2c; --run-bg:#3b2f72; --soon-bg:#5c4a0e; --done-bg:#6d2139; --fault-bg:#34303c;
+    --free-bg:#1f4a2c; --run-bg:#3b2f72; --soon-bg:#5c4a0e; --done-bg:#6d2139; --fault-bg:#34303c; --grace-bg:#1d5a45; --held-bg:#1c3b57;
     --free-t:#7be495; --soon-t:#f5c35c; --bad-t:#ff8aa5;
     --hatch:rgba(243,238,228,.16);
     --deco-a:#3b1a34; --deco-b:#2b2354;
@@ -29,7 +29,7 @@
 }
 :root[data-theme="dark"]{
   --bg:#16121f; --paper:#221c2f; --ink:#f3eee4; --fg:#f3eee4; --muted:#b5adc6;
-  --free-bg:#1f4a2c; --run-bg:#3b2f72; --soon-bg:#5c4a0e; --done-bg:#6d2139; --fault-bg:#34303c;
+  --free-bg:#1f4a2c; --run-bg:#3b2f72; --soon-bg:#5c4a0e; --done-bg:#6d2139; --fault-bg:#34303c; --grace-bg:#1d5a45; --held-bg:#1c3b57;
   --free-t:#7be495; --soon-t:#f5c35c; --bad-t:#ff8aa5;
   --hatch:rgba(243,238,228,.16);
   --deco-a:#3b1a34; --deco-b:#2b2354;
@@ -120,6 +120,18 @@ svg{display:block;flex:none}
 .s-run{background:var(--run-bg)}
 .s-soon{background:var(--soon-bg)}
 .s-done{background:var(--done-bg)}
+.s-grace{background:var(--grace-bg)}.s-held{background:var(--held-bg)}
+.tile.s-grace,.tile.s-held{border-style:dashed}
+.pill.grace{background:var(--grace-bg)}.pill.held{background:var(--held-bg)}
+.done-alert.grace-alert{background:var(--grace-bg);border-color:#1b7a52;box-shadow:5px 5px 0 #1b7a52;color:var(--fg)}
+.grace-alert .da-title,.grace-alert .da-copy{color:var(--fg)}
+.note.good{color:#1b7a52;font-weight:900}
+.qp{display:grid;gap:10px;margin:0 0 12px}.qp:empty{display:none}
+.qrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 13px;border:2.5px solid var(--ink);border-radius:12px;background:var(--paper);box-shadow:3px 3px 0 var(--ink);font-size:14px;font-weight:800}
+.qrow.mine{background:var(--free-bg)}
+.qb{flex:none;padding:8px 12px;border:2.5px solid var(--ink);border-radius:10px;background:var(--paper);font:inherit;font-weight:900;cursor:pointer}
+.qb.primary{background:var(--pink,#FF4F79);color:#fff}
+.qb:disabled{opacity:.5}
 /* 洗衣完成：加強對比、提示動畫與固定提醒 */
 .tile.s-done{
   border:3px solid #b3123a;
@@ -230,6 +242,7 @@ svg{display:block;flex:none}
       </div>
     </section>
     <div class="view" id="uFilters"></div>
+    <section class="qp" id="queuePanel" aria-live="polite"></section>
     <section class="list" id="list" aria-label="機台列表"><div class="empty">連線中…</div></section>
   </div>
 
@@ -251,6 +264,9 @@ svg{display:block;flex:none}
           <button type="button" data-speed="30" aria-pressed="false">30×</button>
           <button type="button" data-speed="120" aria-pressed="false">120×</button>
         </div>
+      </div>
+      <div class="prow"><span class="pl">洗好後等待拿取時間</span>
+        <div class="mini" id="graceSeg" role="group" aria-label="等待拿取時間"><button type="button" data-grace="5" aria-pressed="false">5 分鐘</button><button type="button" data-grace="10" aria-pressed="true">10 分鐘</button></div>
       </div>
       <div class="prow"><span class="pl">其他住戶</span>
         <div class="mini"><button type="button" id="autoBtn" aria-pressed="false">自動模擬</button></div>
@@ -290,7 +306,12 @@ svg{display:block;flex:none}
   var FLOORS=[2,3];
   var GN={m:'男宿',f:'女宿'};
   var TYPE={washer:'洗衣機',dryer:'烘衣機'};
-  var PROG={washer:[{n:'標準洗',m:36},{n:'快洗',m:20}],dryer:[{n:'標準烘',m:40},{n:'加強烘',m:60}]};
+  var PROG={washer:[{n:'洗衣一次',m:36,$:20}],
+    dryer:[{n:'烘衣',m:20,$:20},{n:'加烘 1 次',m:35,$:30},{n:'加烘 2 次',m:50,$:40},{n:'加烘 3 次',m:65,$:50}]};   // 烘衣機：20 分 $20，每加 $10 多 15 分鐘
+  var GRACE=10*60;   // 洗好後的綠色緩衝期（秒），可改成 5*60～10*60
+  var HOLD=5*60;     // 輪到排隊同學後的保留時間（秒）
+  var PAYS=['LINE Pay','街口支付','悠遊付','Apple Pay','現金'];   // 行動支付選項（展示模擬）
+  var ME='u'+Math.random().toString(36).slice(2,8);       // 這位使用者的臨時代號
   var SIM0=100000;
   var CHEVSEL='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l4-4 4 4"/><path d="M8 15l4 4 4-4"/></svg>';
   var ICON={
@@ -342,16 +363,21 @@ svg{display:block;flex:none}
     [11,26,38].forEach(function(min,i){run('ming-3-d'+(i+1),min*60+i*13+5,40*60)});
     mm['jing-0-w3']={e:0,t:36*60,f:1};
     mm['ming-3-d4']={e:0,t:40*60,f:1};
-    done('jing-0-w1',6*60+20);done('jing-0-d4',2*60+45);done('ming-3-d5',14*60+30);done('ming-2-w2',9*60);
-    return{v:1,clock:{real:Date.now(),sim:T,speed:1},offline:false,machines:mm};
+    done('jing-0-w1',6*60+20);done('jing-0-d4',13*60+10);done('ming-3-d5',14*60+30);done('ming-2-w2',9*60);
+    return{v:1,clock:{real:Date.now(),sim:T,speed:1},offline:false,grace:10,machines:mm,hold:{},queue:{},basket:{}};
   }
   function simNow(s){var c=s.clock;return c.sim+(Date.now()-c.real)/1000*c.speed}
   function stateOf(id,s,t){
     var m=s.machines[id]||{e:0,t:BYID[id].total,f:0};
     if(m.f)return{s:'fault',label:'故障停用',rem:null,pct:0};
-    if(!m.e)return{s:'free',label:'空機',rem:null,pct:0};
+    if(!m.e){var h=(s.hold||{})[id];
+      if(h&&h.u&&h.until>t)return{s:'held',label:(h.u===ME?'為你保留 ':'排隊保留 ')+fmt(h.until-t),rem:h.until-t,pct:0,hold:h};
+      return{s:'free',label:'空機',rem:null,pct:0}}
     var rem=m.e-t;
-    if(rem<=0){var w=-rem;return{s:'done',label:'未取出 '+fmt(w,true),rem:null,pct:0,wait:w}}
+    if(rem<=0){var w=-rem;
+      var G=(s.grace||10)*60;
+      if(w<=G)return{s:'grace',label:'等待拿取 剩 '+fmt(G-w),rem:null,pct:(G-w)/G*100,wait:w,left:G-w};
+      return{s:'done',label:'已超時 '+fmt(w-G,true),rem:null,pct:0,wait:w,over:w-G}}
     var pct=Math.min(100,Math.max(0,(1-rem/m.t)*100));
     return rem<=300?{s:'soon',label:'快好了 '+fmt(rem),rem:rem,pct:pct}:{s:'run',label:'運轉中 '+fmt(rem),rem:rem,pct:pct};
   }
@@ -385,7 +411,8 @@ svg{display:block;flex:none}
   window.addEventListener('storage',function(ev){if(ev.key===localSyncKey&&ev.newValue){try{handleLocalSync(JSON.parse(ev.newValue))}catch(e){}}});
   var offline=false,frozen=null,watched={},prevLive={};
   var openId=null,sheetMode='user',progIdx=0,lastSheetSig='',lastFocus=null,toastTimer=null,lastUpd=new Date();
-  var autoOn=false;
+  var autoOn=false,paying=false,payIdx=0,notified={};
+  function isWait(x){return x==='grace'||x==='done'}
   var uflt={gender:'m',floor:'all',type:'all'},aflt={gender:'m',floor:'all',type:'all'};
   var userList,adminList;
 
@@ -418,9 +445,9 @@ svg{display:block;flex:none}
   function sumInfo(d,fl,ty,data,t){
     var ms=LIST.filter(function(m){return m.dorm===d.id&&m.floor===fl&&m.type===ty});
     var good=ms.filter(function(m){return !(data.machines[m.id]||{}).f});
-    var free=0,min=null,done=0;
-    good.forEach(function(m){var st=stateOf(m.id,data,t);if(st.s==='free')free++;else if(st.s==='done')done++;else if(st.rem!=null&&(min==null||st.rem<min))min=st.rem});
-    var broken=ms.length-good.length,extra=(done?' · '+done+' 台未取出':'')+(broken?' · '+broken+' 台停用':'');
+    var free=0,min=null,done=0,held=0;
+    good.forEach(function(m){var st=stateOf(m.id,data,t);if(st.s==='free')free++;else if(isWait(st.s))done++;else if(st.s==='held')held++;else if(st.rem!=null&&(min==null||st.rem<min))min=st.rem});
+    var broken=ms.length-good.length,extra=(done?' · '+done+' 台未取出':'')+(held?' · '+held+' 台保留中':'')+(broken?' · '+broken+' 台停用':'');
     var cnt=free+'/'+good.length+' 空機';
     if(free>0)return{cls:'ok',cnt:cnt,sub:'現在可用'+extra};
     if(min!=null)return{cls:'warn',cnt:cnt,sub:'約 '+Math.max(1,Math.ceil(min/60))+' 分鐘後有空機'+extra};
@@ -432,7 +459,7 @@ svg{display:block;flex:none}
       +'<span class="no">'+m.no+'</span>'
       +'<span class="lbl" data-lbl="'+m.id+'">'+st.label+'</span>'
       +'<span class="ic">'+(bell?ICON.bell:'')+ICON.link+'</span>'
-      +((st.s==='run'||st.s==='soon')?'<span class="bar"><i data-bar="'+m.id+'" style="width:'+st.pct+'%"></i></span>':'')
+      +((st.s==='run'||st.s==='soon'||st.s==='grace')?'<span class="bar"><i data-bar="'+m.id+'" style="width:'+st.pct+'%"></i></span>':'')
       +'</button>';
   }
   function makeList(el,flt,opts){
@@ -540,24 +567,31 @@ svg{display:block;flex:none}
     var d=dormOf(m.dorm);
     return '<div class="ph"><div><h2 id="sTitle">'+TYPE[m.type]+' '+m.no+'</h2><div class="where">'+GN[d.g]+(m.floor===null?'':' · '+m.floor+' 樓')+'</div></div><button type="button" class="x" data-close aria-label="關閉">'+ICON.close+'</button></div>';
   }
-  var PILL={free:'空機',run:'運轉中',soon:'快好了',done:'未取出',fault:'故障停用'};
+  var PILL={free:'空機',run:'運轉中',soon:'快好了',done:'已超時',grace:'等待拿取',held:'保留中',fault:'故障停用'};
   function renderSheet(){
     if(!openId||!ready)return;
     var v=sheetMode==='user'?view():{S:S,T:simNow(S)};
     var m=BYID[openId],st=stateOf(openId,v.S,v.T);
-    var sig=[openId,sheetMode,st.s,!!watched[openId],offline,progIdx].join('|');
+    var mine=st.s==='held'&&st.hold&&st.hold.u===ME;
+    var sig=[openId,sheetMode,st.s,!!watched[openId],offline,progIdx,paying,payIdx,mine].join('|');
     if(sig!==lastSheetSig){
       var h=sheetHead(m)+'<span class="pill '+st.s+'">'+PILL[st.s]+'</span>';
       var dis=(offline&&sheetMode==='user')?' disabled':'';
       if(st.s==='run'||st.s==='soon'){
         h+='<div class="big" id="sBig">'+fmt(st.rem)+'</div><div class="bar"><i id="sBar" style="width:'+st.pct+'%"></i></div><p class="eta" id="sEta"></p>';
+      }else if(st.s==='grace'){
+        h+='<div class="done-alert grace-alert" style="margin-top:14px"><span class="da-icon" aria-hidden="true">⏳</span><div><div class="da-title">洗好了，等待拿取 剩 <span id="sBig">'+fmt(st.left)+'</span></div></div></div><div class="bar"><i id="sBar" style="width:'+st.pct+'%"></i></div>';
       }else if(st.s==='done'){
-        h+='<div class="done-alert" style="margin-top:14px"><span class="da-icon" aria-hidden="true">🔔</span><div><div class="da-title">洗衣完成！請取走衣物</div><div class="da-copy">已等待 '+fmt(st.wait,true)+'，這台機器仍被衣物佔用。</div></div></div><p class="eta">洗好後已等待，衣物還在機器裡。</p>';
-        if(sheetMode==='user')h+='<p class="note">取走後請按下面的按鈕，下一位才看得到空機。</p>';
-      }else if(st.s==='free'&&sheetMode==='user'){
+        h+='<div class="done-alert" style="margin-top:14px"><span class="da-icon" aria-hidden="true">⏰</span><div><div class="da-title">已超時 <span id="sBig">'+fmt(st.over,true)+'</span></div><div class="da-copy">等待拿取時間已結束，衣物仍在機器裡。其他同學可以把衣物移到洗衣籃，讓機台釋出給下一位。</div></div></div>';
+      }else if(st.s==='held'&&!mine){
+        h+='<div class="done-alert grace-alert" style="margin-top:14px"><span class="da-icon" aria-hidden="true">🕒</span><div><div class="da-title">保留給排隊同學，剩 <span id="sBig">'+fmt(st.rem)+'</span></div><div class="da-copy">時間內對方沒有使用，機台才會釋出給下一位。</div></div></div>';
+      }else if((st.s==='free'||mine)&&sheetMode==='user'){
+        if(mine)h+='<p class="note good">輪到你了！請在 <span id="sBig">'+fmt(st.rem)+'</span> 內付款並開始使用。</p>';
         h+='<div class="chips" role="group" aria-label="選擇行程">';
-        PROG[m.type].forEach(function(p,i){h+='<button type="button" data-prog="'+i+'" aria-pressed="'+(i===progIdx)+'">'+p.n+' '+p.m+' 分</button>'});
-        h+='</div><p class="note">開始後，其他住戶會立刻在列表看到這台變成運轉中。</p>';
+        PROG[m.type].forEach(function(p,i){h+='<button type="button" data-prog="'+i+'" aria-pressed="'+(i===progIdx)+'">'+p.n+' '+p.m+' 分 · $'+p.$+'</button>'});
+        h+='</div><div class="chips" role="group" aria-label="付款方式">';
+        PAYS.forEach(function(p,i){h+='<button type="button" data-pay="'+i+'" aria-pressed="'+(i===payIdx)+'">'+p+'</button>'});
+        h+='</div><p class="note">'+(PAYS[payIdx]==='現金'?'請先把 $'+PROG[m.type][progIdx].$+' 投入投幣口或收費箱，再按確認。':'付款成功後機台才會開始運轉。')+'</p>';
       }else if(st.s==='fault'&&sheetMode==='user'){
         h+='<p class="note">這台機器已被回報故障，列表上會顯示停用。修好後可以在這裡恢復。</p>';
       }
@@ -566,15 +600,19 @@ svg{display:block;flex:none}
         h+='<div class="fld"><label for="aMin">剩餘分鐘</label><input id="aMin" type="number" inputmode="numeric" min="1" max="120" value="'+PROG[m.type][0].m+'"><button type="button" class="btn primary" data-act="a-run">設為運轉中</button></div>'
           +'<div class="acts">'
           +'<button type="button" class="btn" data-act="a-soon">剩 10 秒洗好</button>'
-          +'<button type="button" class="btn" data-act="a-done">設為洗好未取出</button>'
+          +'<button type="button" class="btn" data-act="a-done">設為洗好等待拿取</button>'
+          +'<button type="button" class="btn" data-act="a-over">設為已超時</button>'
           +'<button type="button" class="btn" data-act="a-free">設為空機</button>'
           +'<button type="button" class="btn danger" data-act="a-fault">設為故障停用</button></div>';
       }else{
         h+='<div class="acts">';
-        if(st.s==='free'){
-          h+='<button type="button" class="btn primary" data-act="start"'+dis+'>開始使用</button><button type="button" class="btn danger" data-act="fault"'+dis+'>回報故障</button>';
-        }else if(st.s==='done'){
+        if(st.s==='free'||mine){
+          h+='<button type="button" class="btn primary" data-act="start"'+(dis||(paying?' disabled':''))+'>'+(paying?(PAYS[payIdx]==='現金'?'確認中…':'付款處理中…'):(PAYS[payIdx]==='現金'?'已投入現金 $'+PROG[m.type][progIdx].$+'，開始使用':'付款 $'+PROG[m.type][progIdx].$+' 並開始'))+'</button><button type="button" class="btn danger" data-act="fault"'+dis+'>回報故障</button>';
+        }else if(st.s==='held'){
+          h+='<p class="note">請稍候，輪到排隊的同學使用。</p>';
+        }else if(st.s==='grace'||st.s==='done'){
           h+='<button type="button" class="btn primary" data-act="collect"'+dis+'>我已取走衣物</button>';
+          if(st.s==='done')h+='<button type="button" class="btn danger" data-act="basket"'+dis+'>移到洗衣籃</button>';else h+='<button type="button" class="btn" disabled>等待拿取結束後才能移到洗衣籃</button>';
         }else if(st.s==='fault'){
           h+='<button type="button" class="btn primary" data-act="repair"'+dis+'>回報已修復</button>';
         }else{
@@ -588,7 +626,7 @@ svg{display:block;flex:none}
       if(!panel.contains(document.activeElement)){var f=panel.querySelector('[data-close]');if(f)f.focus()}
     }
     var big=$('#sBig');
-    if(big){if(st.s==='done')big.textContent=fmt(st.wait,true);else if(st.rem!=null)big.textContent=fmt(st.rem)}
+    if(big){if(st.s==='done')big.textContent=fmt(st.over,true);else if(st.s==='grace')big.textContent=fmt(st.left);else if(st.rem!=null)big.textContent=fmt(st.rem)}
     var bar=$('#sBar');if(bar)bar.style.width=st.pct+'%';
     var eta=$('#sEta');if(eta&&st.rem!=null)eta.textContent='預計 '+clockStr(new Date(Date.now()+st.rem*1000)).replace(/:\d\d$/,'')+' 完成';
   }
@@ -596,8 +634,26 @@ svg{display:block;flex:none}
   function actUser(a){
     if(!ready||offline)return;
     var T=simNow(S),m=BYID[openId],cur=mval(openId),t=cur.t||m.total;
-    if(a==='start'){var tot=PROG[m.type][progIdx].m*60;setM(openId,{e:T+tot,t:tot,f:0});toast(label(m)+' 已開始，約 '+PROG[m.type][progIdx].m+' 分鐘後完成')}
+    if(a==='start'){
+      if(paying)return;
+      var pr=PROG[m.type][progIdx],pm=PAYS[payIdx],id0=openId;
+      paying=true;lastSheetSig='';renderSheet();
+      setTimeout(function(){
+        paying=false;
+        var T2=simNow(S),st2=stateOf(id0,S,T2);
+        if(!(st2.s==='free'||(st2.s==='held'&&st2.hold.u===ME))){toast('機台已被使用，款項將原路退回');lastSheetSig='';renderAll();return}
+        var tot=pr.m*60,qk=m.dorm+'-'+m.type,w={machines:{},hold:{},queue:{}};
+        w.machines[id0]={e:T2+tot,t:tot,f:0};
+        if(st2.s==='held')w.hold[id0]={u:'',until:0};
+        w.queue[qk]=((S.queue||{})[qk]||[]).filter(function(x){return x.u!==ME});
+        write(w);
+        toast((pm==='現金'?'已收現金 $'+pr.$:'已用 '+pm+' 付款 $'+pr.$)+'，'+label(m)+' 開始運轉');
+        lastSheetSig='';renderAll();
+      },1300);
+      return;
+    }
     else if(a==='collect'){setM(openId,{e:0,t:t,f:0});delete watched[openId];toast(label(m)+' 已取走衣物，機台釋出')}
+    else if(a==='basket'){var bk={};bk[m.dorm]=((S.basket||{})[m.dorm]||0)+1;var wb={machines:{},basket:bk};wb.machines[openId]={e:0,t:t,f:0};write(wb);toast('已把衣物移到洗衣籃，'+label(m)+' 已釋出')}
     else if(a==='finish'){setM(openId,{e:0,t:t,f:0});delete watched[openId];toast(label(m)+' 已釋出，下一位可以使用')}
     else if(a==='watch'){if(watched[openId]){delete watched[openId];toast('已取消提醒')}else{watched[openId]=true;toast('完成時會通知你')}}
     else if(a==='fault'){setM(openId,{e:0,t:t,f:1});delete watched[openId];toast('已回報故障，其他住戶會看到停用標示')}
@@ -610,6 +666,7 @@ svg{display:block;flex:none}
     if(a==='a-free')setM(openId,{e:0,t:m.total,f:0});
     else if(a==='a-fault')setM(openId,{e:0,t:m.total,f:1});
     else if(a==='a-done')setM(openId,{e:T-120,t:m.total,f:0});
+    else if(a==='a-over')setM(openId,{e:T-(S.grace||10)*60-180,t:m.total,f:0});
     else if(a==='a-soon')setM(openId,{e:T+10,t:m.total,f:0});
     else if(a==='a-run'){
       var mins=parseInt($('#aMin').value,10);
@@ -623,6 +680,8 @@ svg{display:block;flex:none}
 
   $('#sheet').addEventListener('click',function(e){
     if(e.target.closest('[data-close]')){closeSheet();return}
+    var pp=e.target.closest('[data-pay]');
+    if(pp){payIdx=+pp.getAttribute('data-pay');renderSheet();return}
     var p=e.target.closest('[data-prog]');
     if(p){progIdx=+p.getAttribute('data-prog');renderSheet();return}
     var a=e.target.closest('[data-act]');
@@ -672,8 +731,8 @@ svg{display:block;flex:none}
     var T=simNow(S),sp=S.clock.speed,p=Math.min(.2,.003*Math.sqrt(sp)),patch={},any=false;
     LIST.forEach(function(m){
       var s=stateOf(m.id,S,T).s;
-      if(s==='done'){if(Math.random()<p){patch[m.id]={e:0,t:m.total,f:0};any=true}}
-      else if(s==='free'){if(Math.random()<p){var tot=PROG[m.type][Math.random()<.8?0:1].m*60;patch[m.id]={e:T+tot,t:tot,f:0};any=true}}
+      if(s==='done'||s==='grace'){if(Math.random()<(s==='grace'?p/3:p)){patch[m.id]={e:0,t:m.total,f:0};any=true}}
+      else if(s==='free'){if(Math.random()<p){var tot=PROG[m.type][Math.random()<.8?0:PROG[m.type].length-1].m*60;patch[m.id]={e:T+tot,t:tot,f:0};any=true}}
     });
     if(any)write({machines:patch});
   }
@@ -681,11 +740,12 @@ svg{display:block;flex:none}
     var T=simNow(S);
     adminList.render({S:S,T:T});
     var c={free:0,run:0,done:0,fault:0};
-    LIST.forEach(function(m){var s=stateOf(m.id,S,T).s;if(s==='soon')s='run';c[s]++});
+    LIST.forEach(function(m){var s=stateOf(m.id,S,T).s;if(s==='soon')s='run';if(s==='grace')s='done';if(s==='held')s='free';c[s]++});
     $('#stFree').textContent=c.free;$('#stRun').textContent=c.run;$('#stDone').textContent=c.done;$('#stFault').textContent=c.fault;
     $('#scopeLbl').textContent=GN[aflt.gender]+(aflt.floor==='all'?' 全部':(aflt.floor==='0'?' 不分樓層':' '+aflt.floor+' 樓'));
     var bs=$('#speedSeg').querySelectorAll('button');
     for(var i=0;i<bs.length;i++)bs[i].setAttribute('aria-pressed',+bs[i].getAttribute('data-speed')===S.clock.speed?'true':'false');
+    var gb=$('#graceSeg').querySelectorAll('button');for(var gi=0;gi<gb.length;gi++)gb[gi].setAttribute('aria-pressed',+gb[gi].getAttribute('data-grace')===(S.grace||10)?'true':'false');
     $('#offBtn').setAttribute('aria-pressed',S.offline?'true':'false');
     $('#offBtn').textContent=S.offline?'恢復連線':'模擬斷線';
     $('#autoBtn').setAttribute('aria-pressed',autoOn?'true':'false');
@@ -694,6 +754,7 @@ svg{display:block;flex:none}
     var b=e.target.closest('button[data-speed]');if(!b||!ready)return;
     var T=simNow(S);write({clock:{real:Date.now(),sim:T,speed:+b.getAttribute('data-speed')}});
   });
+  $('#graceSeg').addEventListener('click',function(e){var b=e.target.closest('button[data-grace]');if(!b||!ready)return;write({grace:+b.getAttribute('data-grace')});toast('等待拿取時間改為 '+b.getAttribute('data-grace')+' 分鐘')});
   $('#autoBtn').addEventListener('click',function(){autoOn=!autoOn;toast(autoOn?'已開始模擬其他住戶':'已停止模擬其他住戶');renderAll()});
   $('#offBtn').addEventListener('click',function(){if(!ready)return;write({offline:!S.offline})});
   $('#resetBtn').addEventListener('click',function(){closeSheet();resetAll();toast('展示資料已重設')});
@@ -725,6 +786,71 @@ svg{display:block;flex:none}
     if(taps>=5){taps=0;setMode('admin')}
   });
 
+  /* 線上排隊：全滿時加入；有機台釋出時依序保留 5 分鐘 */
+  function qInfo(dorm,ty,data,t){
+    var key=dorm.id+'-'+ty,free=0,n=0,mineM=null;
+    LIST.forEach(function(m){
+      if(m.dorm!==dorm.id||m.type!==ty||(data.machines[m.id]||{}).f)return;
+      n++;var st=stateOf(m.id,data,t);
+      if(st.s==='free')free++;
+      if(st.s==='held'&&st.hold.u===ME)mineM={m:m,left:st.rem};
+    });
+    var q=(data.queue||{})[key]||[],pos=-1;
+    q.forEach(function(x,i){if(x.u===ME)pos=i});
+    return{n:n,free:free,mine:mineM,q:q.length,pos:pos};
+  }
+  function renderQueue(v){
+    var el=$('#queuePanel');if(!el)return;
+    var data=v.S,t=v.T,dorm=dormByGender(uflt.gender),rows=[],sig=[];
+    (uflt.type==='all'?['washer','dryer']:[uflt.type]).forEach(function(ty){
+      var q=qInfo(dorm,ty,data,t),a=' data-qd="'+dorm.id+'" data-qt="'+ty+'"';
+      if(q.mine){rows.push('<div class="qrow mine"><span>🎉 輪到你了！'+label(q.mine.m)+' 已為你保留，剩 <b data-hold="'+q.mine.m.id+'">'+fmt(q.mine.left)+'</b></span><button type="button" class="qb primary" data-qopen="'+q.mine.m.id+'">前往使用</button></div>');sig.push('m'+q.mine.m.id)}
+      else if(q.pos>-1){rows.push('<div class="qrow"><span>'+TYPE[ty]+'排隊中：第 <b>'+(q.pos+1)+'</b> 位</span><button type="button" class="qb" data-q="leave"'+a+'>取消排隊</button></div>');sig.push('p'+ty+q.pos+'/'+q.q)}
+      else if(q.n>0&&q.free===0){rows.push('<div class="qrow"><span>'+TYPE[ty]+'全部使用中 · 目前 '+q.q+' 人排隊</span><button type="button" class="qb primary" data-q="join"'+a+(offline?' disabled':'')+'>加入排隊</button></div>');sig.push('j'+ty+q.q)}
+    });
+    var bk=(data.basket||{})[dorm.id]||0;
+    if(bk){rows.push('<div class="qrow"><span>🧺 洗衣籃有 <b>'+bk+'</b> 批衣物待領回</span><button type="button" class="qb" data-q="take" data-qd="'+dorm.id+'">我已領回</button></div>');sig.push('b'+bk)}
+    var k=sig.join('|')+'|'+offline;
+    if(k!==el._sig){el._sig=k;el.innerHTML=rows.join('')}
+    var hs=el.querySelectorAll('[data-hold]');
+    for(var i=0;i<hs.length;i++)hs[i].textContent=fmt(stateOf(hs[i].getAttribute('data-hold'),data,t).rem||0);
+  }
+  $('#queuePanel').addEventListener('click',function(e){
+    var b=e.target.closest('button');if(!b||b.disabled)return;
+    var o=b.getAttribute('data-qopen');if(o){openSheet(o);return}
+    var k=b.getAttribute('data-q');if(!k||!ready||offline)return;
+    var d=b.getAttribute('data-qd'),ty=b.getAttribute('data-qt'),T=simNow(S);
+    if(k==='take'){var bw={};bw[d]=Math.max(0,((S.basket||{})[d]||0)-1);write({basket:bw});toast('已標記領回');return}
+    var key=d+'-'+ty,q=((S.queue||{})[key]||[]).filter(function(x){return x.u!==ME});
+    if(k==='join'){q.push({u:ME,at:T});toast('已加入排隊，輪到你時會通知並保留 5 分鐘')}else toast('已取消排隊');
+    var qw={};qw[key]=q;write({queue:qw});
+  });
+  function queueStep(){
+    if(!ready||!S||S.offline||inflight>0)return;
+    var T=simNow(S),H={},hp={},qp={},changed=false,sh=S.hold||{};
+    Object.keys(sh).forEach(function(k){H[k]=sh[k]});
+    DORMS.forEach(function(d){['washer','dryer'].forEach(function(ty){
+      var key=d.id+'-'+ty,q=((S.queue||{})[key]||[]).slice(),qc=false,users={};
+      var ms=LIST.filter(function(m){return m.dorm===d.id&&m.type===ty});
+      ms.forEach(function(m){
+        var h=H[m.id],mv=mval(m.id);
+        if(h&&h.u){
+          if(mv.f||mv.e||h.until<=T){
+            if(h.until<=T&&!mv.e&&!mv.f)q=q.filter(function(x){return x.u!==h.u});
+            H[m.id]={u:'',until:0};hp[m.id]=H[m.id];qc=true;changed=true;
+          }else users[h.u]=1;
+        }
+      });
+      ms.forEach(function(m){
+        var mv=mval(m.id),h=H[m.id];
+        if(mv.f||mv.e||(h&&h.u))return;
+        for(var i=0;i<q.length;i++)if(!users[q[i].u]){H[m.id]={u:q[i].u,until:T+HOLD};hp[m.id]=H[m.id];users[q[i].u]=1;changed=true;return}
+      });
+      if(qc)qp[key]=q;
+    })});
+    if(changed)write({hold:hp,queue:qp});
+  }
+
   /* render + tick */
   function renderDoneAlert(){
     var alert=$('#doneAlert');
@@ -732,7 +858,7 @@ svg{display:block;flex:none}
     var v=view(),data=v.S,t=v.T;
     var completed=LIST.filter(function(m){
       return !!watched[m.id] &&
-        stateOf(m.id,data,t).s==='done';
+        isWait(stateOf(m.id,data,t).s);
     });
     alert.hidden=completed.length===0;
     if(completed.length){
@@ -748,7 +874,7 @@ svg{display:block;flex:none}
   function renderAll(){
     if(!ready)return;
     if(mode==='admin')adminRender();
-    else{userList.render(view());renderConn();renderDoneAlert()}
+    else{userList.render(view());renderConn();renderDoneAlert();renderQueue(view())}
     renderSheet();
   }
   function tick(){
@@ -758,10 +884,13 @@ svg{display:block;flex:none}
       var T=simNow(S);
       LIST.forEach(function(m){
         var s=stateOf(m.id,S,T).s;
-        if(mode==='user'&&watched[m.id]&&prevLive[m.id]&&prevLive[m.id]!=='done'&&s==='done'){toast(label(m)+' 已洗好，請盡快取出衣物')}
+        if(mode==='user'&&watched[m.id]&&prevLive[m.id]&&!isWait(prevLive[m.id])&&isWait(s)){toast(label(m)+' 已洗好，請盡快取出衣物')}
+        var hs=stateOf(m.id,S,T);
+        if(mode==='user'&&hs.s==='held'&&hs.hold.u===ME&&!notified[m.id+hs.hold.until]){notified[m.id+hs.hold.until]=1;toast('輪到你了！'+label(m)+' 已為你保留 5 分鐘')}
         prevLive[m.id]=s;
       });
       lastUpd=new Date();
+      queueStep();
     }
     renderAll();
   }
